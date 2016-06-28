@@ -70,14 +70,14 @@ namespace DynamicListView
          * size. The hover cell's BitmapDrawable is drawn on top of the bitmap every
          * single time an invalidate call is made.
          */
-        BitmapDrawable GetAndAddHoverView (View v)
+        BitmapDrawable getAndAddHoverView (View v)
         {
             int w = v.Width;
             int h = v.Height;
             int top = v.Top;
             int left = v.Left;
 
-            Bitmap b = GetBitmapWithBorder (v);
+            Bitmap b = getBitmapWithBorder (v);
 
             BitmapDrawable drawable = new BitmapDrawable (Resources, b);
 
@@ -90,9 +90,9 @@ namespace DynamicListView
         }
 
         /** Draws a black border over the screenshot of the view passed in. */
-        Bitmap GetBitmapWithBorder (View v)
+        Bitmap getBitmapWithBorder (View v)
         {
-            Bitmap bitmap = GetBitmapFromView (v);
+            Bitmap bitmap = getBitmapFromView (v);
             Canvas can = new Canvas (bitmap);
 
             Rect rect = new Rect (0, 0, bitmap.Width, bitmap.Height);
@@ -109,7 +109,7 @@ namespace DynamicListView
         }
 
         /** Returns a bitmap showing a screenshot of the view passed in. */
-        Bitmap GetBitmapFromView (View v)
+        Bitmap getBitmapFromView (View v)
         {
             Bitmap bitmap = Bitmap.CreateBitmap (v.Width, v.Height, Bitmap.Config.Argb8888);
             Canvas canvas = new Canvas (bitmap);
@@ -131,17 +131,6 @@ namespace DynamicListView
             mBelowItemId = adapter.GetItemId (position + 1);
         }
 
-        /** Retrieves the position in the list corresponding to itemID */
-        public int getPositionForID (long itemID)
-        {
-            View v = getViewForID (itemID);
-            if (v == null) {
-                return -1;
-            } else {
-                return GetPositionForView (v);
-            }
-        }
-
         /** Retrieves the view in the list corresponding to itemID */
         public View getViewForID (long itemID)
         {
@@ -156,6 +145,94 @@ namespace DynamicListView
                 }
             }
             return null;
+        }
+
+        /** Retrieves the position in the list corresponding to itemID */
+        public int getPositionForID (long itemID)
+        {
+            View v = getViewForID (itemID);
+            if (v == null) {
+                return -1;
+            } else {
+                return GetPositionForView (v);
+            }
+        }
+
+        protected override void DispatchDraw (Canvas canvas)
+        {
+            base.DispatchDraw (canvas);
+            if (mHoverCell != null) {
+                mHoverCell.Draw (canvas);
+            }
+        }
+
+        public override bool OnTouchEvent (MotionEvent e)
+        {
+            switch (e.Action & MotionEventActions.Mask) {
+            case MotionEventActions.Down:
+                mDownX = (int)e.GetX();
+                mDownY = (int)e.GetY();
+                mActivePointerId = e.GetPointerId(0);
+                break;
+            case MotionEventActions.Move:
+                if (mActivePointerId == INVALID_POINTER_ID)
+                    break;
+
+                int pointerIndex = e.FindPointerIndex(mActivePointerId);
+                mLastEventY = (int) e.GetY(pointerIndex);
+                int deltaY = mLastEventY - mDownY;
+
+                if (mCellIsMobile) {
+                    mHoverCellCurrentBounds.OffsetTo(mHoverCellOriginalBounds.Left, mHoverCellOriginalBounds.Top + deltaY + mTotalOffset);
+                    mHoverCell.Bounds = mHoverCellCurrentBounds; // maybe SetBounds()
+                    Invalidate ();
+                    handleCellSwitch ();
+                    mIsMobileScrolling = false;
+                    handleMobileCellScroll ();
+                    return false;
+                }
+                break;
+            case MotionEventActions.Up:
+                touchEventsEnded ();
+                break;
+            case MotionEventActions.Cancel:
+                touchEventsCancelled ();
+                break;
+            case MotionEventActions.PointerUp:
+                /* If a multitouch event took place and the original touch dictating
+                 * the movement of the hover cell has ended, then the dragging event
+                 * ends and the hover cell is animated to its corresponding position
+                 * in the listview. */
+                pointerIndex = (int)(e.Action & MotionEventActions.PointerIndexMask) >> (int)MotionEventActions.PointerIndexShift;
+                int pointerId = e.GetPointerId(pointerIndex);
+                if (pointerId == mActivePointerId)
+                    touchEventsEnded ();
+                break;
+            default:
+                break;
+            }
+
+            return base.OnTouchEvent (e);
+        }
+
+        void touchEventsCancelled ()
+        {
+            throw new NotImplementedException ();
+        }
+
+        void touchEventsEnded ()
+        {
+            throw new NotImplementedException ();
+        }
+
+        void handleCellSwitch ()
+        {
+            throw new NotImplementedException ();
+        }
+
+        void handleMobileCellScroll ()
+        {
+            throw new NotImplementedException ();
         }
    }
 }
