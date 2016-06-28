@@ -4,6 +4,7 @@ using Android.Content;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.Util;
+using Android.Views;
 using Android.Widget;
 
 namespace DynamicListView
@@ -59,8 +60,54 @@ namespace DynamicListView
         }
         #endregion
 
-
         void Init (Context context)
+        {
+            throw new NotImplementedException ();
+        }
+
+        /**
+         * Creates the hover cell with the appropriate bitmap and of appropriate
+         * size. The hover cell's BitmapDrawable is drawn on top of the bitmap every
+         * single time an invalidate call is made.
+         */
+        BitmapDrawable GetAndAddHoverView (View v)
+        {
+            int w = v.Width;
+            int h = v.Height;
+            int top = v.Top;
+            int left = v.Left;
+
+            Bitmap b = GetBitmapWithBorder (v);
+
+            BitmapDrawable drawable = new BitmapDrawable (Resources, b);
+
+            mHoverCellOriginalBounds = new Rect (left, top, left + w, top + h);
+            mHoverCellCurrentBounds = new Rect (mHoverCellOriginalBounds);
+
+            drawable.Bounds = mHoverCellCurrentBounds; // maybe SetBounds()... 
+
+            return drawable;
+        }
+
+        Bitmap GetBitmapWithBorder (View v)
+        {
+            Bitmap bitmap = GetBitmapFromView (v);
+            Canvas can = new Canvas (bitmap);
+
+            Rect rect = new Rect (0, 0, bitmap.Width, bitmap.Height);
+
+            Paint paint = new Paint ();
+            paint.SetStyle (Paint.Style.Stroke);
+            paint.StrokeWidth = LINE_THICKNESS;
+            paint.Color = Color.Black;
+
+            can.DrawBitmap (bitmap, 0, 0, null);
+            can.DrawRect (rect, paint);
+
+            return bitmap;
+        }
+
+        Bitmap GetBitmapFromView (View v)
         {
             throw new NotImplementedException ();
         }
