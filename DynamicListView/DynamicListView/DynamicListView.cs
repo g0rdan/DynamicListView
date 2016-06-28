@@ -89,6 +89,7 @@ namespace DynamicListView
             return drawable;
         }
 
+        /** Draws a black border over the screenshot of the view passed in. */
         Bitmap GetBitmapWithBorder (View v)
         {
             Bitmap bitmap = GetBitmapFromView (v);
@@ -107,9 +108,54 @@ namespace DynamicListView
             return bitmap;
         }
 
+        /** Returns a bitmap showing a screenshot of the view passed in. */
         Bitmap GetBitmapFromView (View v)
         {
-            throw new NotImplementedException ();
+            Bitmap bitmap = Bitmap.CreateBitmap (v.Width, v.Height, Bitmap.Config.Argb8888);
+            Canvas canvas = new Canvas (bitmap);
+            v.Draw (canvas);
+            return bitmap;
+        }
+
+        /**
+         * Stores a reference to the views above and below the item currently
+         * corresponding to the hover cell. It is important to note that if this
+         * item is either at the top or bottom of the list, mAboveItemId or mBelowItemId
+         * may be invalid.
+         */
+        void updateNeighborViewsForID (long itemID)
+        {
+            int position = getPositionForID (itemID);
+            StableArrayAdapter adapter = (StableArrayAdapter)Adapter;
+            mAboveItemId = adapter.GetItemId (position - 1);
+            mBelowItemId = adapter.GetItemId (position + 1);
+        }
+
+        /** Retrieves the position in the list corresponding to itemID */
+        public int getPositionForID (long itemID)
+        {
+            View v = getViewForID (itemID);
+            if (v == null) {
+                return -1;
+            } else {
+                return GetPositionForView (v);
+            }
+        }
+
+        /** Retrieves the view in the list corresponding to itemID */
+        public View getViewForID (long itemID)
+        {
+            int firstVisiblePosition = FirstVisiblePosition;
+            StableArrayAdapter adapter = (StableArrayAdapter)Adapter;
+            for (int i = 0; i < ChildCount; i++) {
+                View v = GetChildAt (i);
+                int position = firstVisiblePosition + i;
+                long id = adapter.GetItemId (position);
+                if (id == itemID) {
+                    return v;
+                }
+            }
+            return null;
         }
    }
 }
