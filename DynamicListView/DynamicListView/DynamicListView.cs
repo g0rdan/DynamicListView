@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Android.Animation;
 using Android.Content;
 using Android.Graphics;
 using Android.Graphics.Drawables;
@@ -9,8 +10,10 @@ using Android.Widget;
 
 namespace DynamicListView
 {
-    public class DynamicListView : ListView
+    public class DynamicListView : ListView, ViewTreeObserver.IOnPreDrawListener
     {
+        Context _context;
+
         const int SMOOTH_SCROLL_AMOUNT_AT_EDGE = 15;
         const int MOVE_DURATION = 150;
         const int LINE_THICKNESS = 15;
@@ -37,11 +40,19 @@ namespace DynamicListView
         Rect mHoverCellCurrentBounds;
         Rect mHoverCellOriginalBounds;
 
+
         const int INVALID_POINTER_ID = -1;
         int mActivePointerId = INVALID_POINTER_ID;
 
         bool mIsWaitingForScrollFinish = false;
         int mScrollState = 0; //OnScrollListener.SCROLL_STATE_IDLE;
+
+        #region ViewTreeObserver
+        ViewTreeObserver observer;
+        long observeSwitchItemID;
+        int observeSwitchViewStartTop;
+        int observeDeltaY;
+        #endregion
 
         #region Constructors
         public DynamicListView (Context context) : base (context)
@@ -49,7 +60,7 @@ namespace DynamicListView
             Init (context);
         }
 
-        public DynamicListView (Context context, IAttributeSet attrs, int defStyle) : base(context, attrs, defStyle)
+        public DynamicListView (Context context, IAttributeSet attrs, int defStyle) : base (context, attrs, defStyle)
         {
             Init (context);
         }
@@ -62,6 +73,7 @@ namespace DynamicListView
 
         void Init (Context context)
         {
+            _context = context;
             throw new NotImplementedException ();
         }
 
@@ -170,20 +182,20 @@ namespace DynamicListView
         {
             switch (e.Action & MotionEventActions.Mask) {
             case MotionEventActions.Down:
-                mDownX = (int)e.GetX();
-                mDownY = (int)e.GetY();
-                mActivePointerId = e.GetPointerId(0);
+                mDownX = (int)e.GetX ();
+                mDownY = (int)e.GetY ();
+                mActivePointerId = e.GetPointerId (0);
                 break;
             case MotionEventActions.Move:
                 if (mActivePointerId == INVALID_POINTER_ID)
                     break;
 
-                int pointerIndex = e.FindPointerIndex(mActivePointerId);
-                mLastEventY = (int) e.GetY(pointerIndex);
+                int pointerIndex = e.FindPointerIndex (mActivePointerId);
+                mLastEventY = (int)e.GetY (pointerIndex);
                 int deltaY = mLastEventY - mDownY;
 
                 if (mCellIsMobile) {
-                    mHoverCellCurrentBounds.OffsetTo(mHoverCellOriginalBounds.Left, mHoverCellOriginalBounds.Top + deltaY + mTotalOffset);
+                    mHoverCellCurrentBounds.OffsetTo (mHoverCellOriginalBounds.Left, mHoverCellOriginalBounds.Top + deltaY + mTotalOffset);
                     mHoverCell.Bounds = mHoverCellCurrentBounds; // maybe SetBounds()
                     Invalidate ();
                     handleCellSwitch ();
@@ -204,7 +216,7 @@ namespace DynamicListView
                  * ends and the hover cell is animated to its corresponding position
                  * in the listview. */
                 pointerIndex = (int)(e.Action & MotionEventActions.PointerIndexMask) >> (int)MotionEventActions.PointerIndexShift;
-                int pointerId = e.GetPointerId(pointerIndex);
+                int pointerId = e.GetPointerId (pointerIndex);
                 if (pointerId == mActivePointerId)
                     touchEventsEnded ();
                 break;
@@ -225,7 +237,57 @@ namespace DynamicListView
             throw new NotImplementedException ();
         }
 
+        /**
+         * This method determines whether the hover cell has been shifted far enough
+         * to invoke a cell swap. If so, then the respective cell swap candidate is
+         * determined and the data set is changed. Upon posting a notification of the
+         * data set change, a layout is invoked to place the cells in the right place.
+         * Using a ViewTreeObserver and a corresponding OnPreDrawListener, we can
+         * offset the cell being swapped to where it previously was and then animate it to
+         * its new position.
+         */
         void handleCellSwitch ()
+        {
+            observeDeltaY = mLastEventY - mDownY;
+            int deltaYTotal = mHoverCellOriginalBounds.Top + mTotalOffset + observeDeltaY;
+
+            View belowView = getViewForID (mBelowItemId);
+            View mobileView = getViewForID (mMobileItemId);
+            View aboveView = getViewForID (mAboveItemId);
+
+            bool isBelow = (belowView != null) && (deltaYTotal > belowView.Top);
+            bool isAbove = (aboveView != null) && (deltaYTotal < aboveView.Top);
+
+            if (isBelow || isAbove) {
+
+                observeSwitchItemID = isBelow ? mBelowItemId : mAboveItemId;
+                View switchView = isBelow ? belowView : aboveView;
+                int originalItem = GetPositionForView (mobileView);
+
+                if (switchView == null) {
+                    updateNeighborViewsForID (mMobileItemId);
+                    return;
+                }
+
+                swapElements (mCheeseList, originalItem, GetPositionForView (switchView));
+
+                ((BaseAdapter)Adapter).NotifyDataSetChanged ();
+
+                mDownY = mLastEventY;
+
+                observeSwitchViewStartTop = switchView.Top;
+
+                mobileView.Visibility = ViewStates.Visible;
+                switchView.Visibility = ViewStates.Invisible;
+
+                updateNeighborViewsForID (mMobileItemId);
+
+                observer = ViewTreeObserver;
+                observer.AddOnPreDrawListener (this);
+            }
+        }
+
+        void swapElements (List<string> mCheeseList, int originalItem, int v)
         {
             throw new NotImplementedException ();
         }
@@ -234,6 +296,28 @@ namespace DynamicListView
         {
             throw new NotImplementedException ();
         }
-   }
+
+        public bool OnPreDraw ()
+        {
+            observer.RemoveOnPreDrawListener (this);
+
+            View switchView = getViewForID (observeSwitchItemID);
+
+            mTotalOffset += observeDeltaY;
+
+            int switchViewNewTop = switchView.Top;
+            int delta = observeSwitchViewStartTop - switchViewNewTop;
+
+            switchView.TranslationY = delta;
+
+            ObjectAnimator animator = ObjectAnimator.OfFloat (switchView, nameof(this.TranslationY), 0); //TODO непонтяно с TranslationY
+            animator.SetDuration (MOVE_DURATION);
+            animator.Start ();
+
+            return true;
+        }
+    }
+
+    
 }
 
