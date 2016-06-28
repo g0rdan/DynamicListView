@@ -7,13 +7,12 @@ using Android.Graphics.Drawables;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
+using Java.Lang;
 
 namespace DynamicListView
 {
-    public class DynamicListView : ListView, ViewTreeObserver.IOnPreDrawListener
+    public class DynamicListView : ListView, ViewTreeObserver.IOnPreDrawListener, ValueAnimator.IAnimatorUpdateListener, ITypeEvaluator
     {
-        Context _context;
-
         const int SMOOTH_SCROLL_AMOUNT_AT_EDGE = 15;
         const int MOVE_DURATION = 150;
         const int LINE_THICKNESS = 15;
@@ -31,12 +30,13 @@ namespace DynamicListView
         bool mIsMobileScrolling;
         int mSmoothScrollAmountAtEdge = 0;
 
-        const int INVALID_ID = -1;
-        long mAboveItemId = INVALID_ID;
-        long mMobileItemId = INVALID_ID;
-        long mBelowItemId = INVALID_ID;
+        public int INVALID_ID = -1;
 
-        BitmapDrawable mHoverCell;
+        public long mAboveItemId = -1;
+        public long mMobileItemId = -1;
+        public long mBelowItemId = -1;
+
+        public BitmapDrawable mHoverCell;
         Rect mHoverCellCurrentBounds;
         Rect mHoverCellOriginalBounds;
 
@@ -52,6 +52,10 @@ namespace DynamicListView
         long observeSwitchItemID;
         int observeSwitchViewStartTop;
         int observeDeltaY;
+        #endregion
+
+        #region touchEventsEnded()
+        public View touchEventsEndedMobileView;
         #endregion
 
         #region Constructors
@@ -73,7 +77,6 @@ namespace DynamicListView
 
         void Init (Context context)
         {
-            _context = context;
             throw new NotImplementedException ();
         }
 
@@ -232,9 +235,35 @@ namespace DynamicListView
             throw new NotImplementedException ();
         }
 
+
+
+        /**
+         * Resets all the appropriate fields to a default state while also animating
+         * the hover cell back to its correct location.
+         */
         void touchEventsEnded ()
         {
-            throw new NotImplementedException ();
+            touchEventsEndedMobileView = getViewForID (mMobileItemId);
+            if (mCellIsMobile || mIsWaitingForScrollFinish) {
+                mCellIsMobile = false;
+                mIsWaitingForScrollFinish = false;
+                mIsMobileScrolling = false;
+                mActivePointerId = INVALID_POINTER_ID;
+
+                // If the autoscroller has not completed scrolling, we need to wait for it to
+                // finish in order to determine the final location of where the hover cell
+                // should be animated to.
+                if (mScrollState != 0) {//OnScrollListener.SCROLL_STATE_IDLE) {
+                    mIsWaitingForScrollFinish = true;
+                    return;
+                }
+
+                mHoverCellCurrentBounds.OffsetTo (mHoverCellOriginalBounds.Left, touchEventsEndedMobileView.Top);
+                ObjectAnimator hoverViewAnimator = ObjectAnimator.OfObject (mHoverCell, "bounds", this, mHoverCellCurrentBounds);
+                hoverViewAnimator.AddUpdateListener (this);
+                hoverViewAnimator.AddListener (new MyAnimatorListenerAdapter(this));
+                hoverViewAnimator.Start ();
+            }
         }
 
         /**
@@ -287,9 +316,11 @@ namespace DynamicListView
             }
         }
 
-        void swapElements (List<string> mCheeseList, int originalItem, int v)
+        void swapElements (List<string> arrayList, int indexOne, int indexTwo)
         {
-            throw new NotImplementedException ();
+            var temp = arrayList[indexOne];
+            arrayList[indexOne] = arrayList[indexTwo];
+            arrayList[indexTwo] = temp;
         }
 
         void handleMobileCellScroll ()
@@ -297,6 +328,7 @@ namespace DynamicListView
             throw new NotImplementedException ();
         }
 
+        #region Interfaces implementation
         public bool OnPreDraw ()
         {
             observer.RemoveOnPreDrawListener (this);
@@ -310,14 +342,81 @@ namespace DynamicListView
 
             switchView.TranslationY = delta;
 
-            ObjectAnimator animator = ObjectAnimator.OfFloat (switchView, nameof(this.TranslationY), 0); //TODO непонтяно с TranslationY
+            ObjectAnimator animator = ObjectAnimator.OfFloat (switchView, nameof (this.TranslationY), 0); //TODO непонтяно с TranslationY
             animator.SetDuration (MOVE_DURATION);
             animator.Start ();
 
             return true;
         }
+
+        public void OnAnimationUpdate (ValueAnimator animation)
+        {
+            Invalidate ();
+        }
+
+        public Java.Lang.Object Evaluate (float fraction, Java.Lang.Object startValue, Java.Lang.Object endValue)
+        {
+            var startValueRect = (Rect)startValue;
+            var endValueRect = (Rect)endValue;
+
+            return new Rect (interpolate (startValueRect.Left, endValueRect.Left, fraction),
+                    interpolate (startValueRect.Top, endValueRect.Top, fraction),
+                    interpolate (startValueRect.Right, endValueRect.Right, fraction),
+                    interpolate (startValueRect.Bottom, endValueRect.Bottom, fraction));
+        }
+
+        #endregion
+
+        int interpolate (int start, int end, float fraction)
+        {
+            return (int)(start + fraction * (end - start));
+        }
     }
 
-    
+    public class MyAnimatorListenerAdapter : AnimatorListenerAdapter
+    {
+        DynamicListView _dynamicListView;
+
+        public MyAnimatorListenerAdapter (DynamicListView dynamicListView)
+        {
+            _dynamicListView = dynamicListView;
+        }
+
+        public override void OnAnimationStart (Animator animation)
+        {
+            _dynamicListView.Enabled = false;
+        }
+
+        public override void OnAnimationEnd (Animator animation)
+        {
+            base.OnAnimationEnd (animation);
+
+            _dynamicListView.mAboveItemId = _dynamicListView.INVALID_ID;
+            _dynamicListView.mMobileItemId = _dynamicListView.INVALID_ID;
+            _dynamicListView.mBelowItemId = _dynamicListView.INVALID_ID;
+            _dynamicListView.touchEventsEndedMobileView.Visibility = ViewStates.Visible;
+            _dynamicListView.mHoverCell = null;
+            _dynamicListView.Enabled = true;
+            _dynamicListView.Invalidate ();
+        }
+    }
+
+    //public class MyTypeConverter : TypeConverter
+    //{ 
+    //    public MyTypeConverter (Class fromClass, Class toClass) : base (fromClass, toClass)
+    //    {
+            
+    //    }
+
+    //    public override Java.Lang.Object Convert (Java.Lang.Object value)
+    //    {
+    //        throw new NotImplementedException ();
+    //    }
+
+    //    public int interpolate (int start, int end, float fraction)
+    //    {
+    //        return (int)(start + fraction * (end - start));
+    //    }
+    //}
 }
 
