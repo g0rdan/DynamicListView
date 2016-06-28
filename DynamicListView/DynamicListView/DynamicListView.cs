@@ -230,12 +230,24 @@ namespace DynamicListView
             return base.OnTouchEvent (e);
         }
 
+        /**
+         * Resets all the appropriate fields to a default state.
+         */
         void touchEventsCancelled ()
         {
-            throw new NotImplementedException ();
+            View mobileView = getViewForID (mMobileItemId);
+            if (mCellIsMobile) {
+                mAboveItemId = INVALID_ID;
+                mMobileItemId = INVALID_ID;
+                mBelowItemId = INVALID_ID;
+                mobileView.Visibility = ViewStates.Visible;
+                mHoverCell = null;
+                Invalidate ();
+            }
+            mCellIsMobile = false;
+            mIsMobileScrolling = false;
+            mActivePointerId = INVALID_POINTER_ID;
         }
-
-
 
         /**
          * Resets all the appropriate fields to a default state while also animating
@@ -325,7 +337,34 @@ namespace DynamicListView
 
         void handleMobileCellScroll ()
         {
-            throw new NotImplementedException ();
+            mIsMobileScrolling = handleMobileCellScroll (mHoverCellCurrentBounds);
+        }
+
+        /**
+         * This method is in charge of determining if the hover cell is above
+         * or below the bounds of the listview. If so, the listview does an appropriate
+         * upward or downward smooth scroll so as to reveal new items.
+         */
+        bool handleMobileCellScroll (Rect r)
+        {
+            int offset = ComputeVerticalScrollOffset();
+            int height = Height;
+            int extent = ComputeVerticalScrollExtent ();
+            int range = ComputeVerticalScrollRange ();
+            int hoverViewTop = r.Top;
+            int hoverHeight = r.Height ();
+
+            if (hoverViewTop <= 0 && offset > 0) {
+                SmoothScrollBy (-mSmoothScrollAmountAtEdge, 0);
+                return true;
+            }
+
+            if (hoverViewTop + hoverHeight >= height && (offset + extent) < range) {
+                SmoothScrollBy (mSmoothScrollAmountAtEdge, 0);
+                return true;
+            }
+
+            return false;
         }
 
         #region Interfaces implementation
